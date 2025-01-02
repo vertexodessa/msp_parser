@@ -571,7 +571,7 @@ private:
     ifstream m_file;
 };
 
-unique_ptr<IInputSource> createInputSouce(string inputType, string source) {
+unique_ptr<IInputSource> createInputSource(string inputType, string source) {
     if (inputType == "udp") {
         int udpPort = stoi(source);
         if (udpPort <= 0 || udpPort > 65535) {
@@ -622,7 +622,7 @@ int main(int argc, char* argv[]) {
 
     try {
         // 1) Create input source
-        unique_ptr<IInputSource> inputSource = createInputSouce(inputType, source);
+        unique_ptr<IInputSource> inputSource = createInputSource(inputType, source);
 
         // 2) Create the shared data model
         FlightDataModel flightModel;
