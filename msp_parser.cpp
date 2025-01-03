@@ -45,31 +45,7 @@ struct FlightDataModel {
     uint16_t channels[CHANNEL_COUNT] {};
     char     fcIdentifier[5]     {};  // 4 chars + null terminator
 
-    uint8_t  frameBuffer[FRAME_BUFFER_SIZE] {};
-    size_t   fbCursor           { 0 };
     bool     verbose            { true };
-
-    /**
-     * Flush the internal frame buffer.
-     */
-    void flushFrameBuffer() {
-        if (verbose) {
-            cout << "[FlightDataModel] Flushing frame buffer of size " << fbCursor << "\n";
-        }
-        // If you need real sendto(...) calls, do them here
-        fbCursor = 0;
-    }
-
-    /**
-     * Copy arbitrary data to our frame buffer.
-     */
-    void copyToFrameBuffer(const void* data, size_t size) {
-        if ((fbCursor + size) > FRAME_BUFFER_SIZE) {
-            flushFrameBuffer();
-        }
-        memcpy(frameBuffer + fbCursor, data, size);
-        fbCursor += size;
-    }
 };
 
 /******************************************************************************
@@ -334,7 +310,7 @@ public:
         // Prepare destination address (localhost by default)
         memset(&m_destAddr, 0, sizeof(m_destAddr));
         m_destAddr.sin_family      = AF_INET;
-        m_destAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        m_destAddr.sin_addr.s_addr = inet_addr("10.5.0.10");
         m_destAddr.sin_port        = htons(outPort);
     }
 
@@ -353,13 +329,11 @@ public:
             // output format:
             // TIMESTAMP:LINK_QUALITY:LINK_QUALITY:RECOVERED_PACKETS:LOST_PACKETS:20:20:20:20 (RSSI values are mocked, link quality is just duplicated)
             
-            uint16_t link_quality = dataModel.channels[8];
-            uint16_t lost_packets = dataModel.channels[10] & 0x1F;
-            uint16_t recovered_packets = (dataModel.channels[11] >> 5) & 0x1F;
+            uint16_t link_quality = dataModel.channels[10];
 
-            char buffer[64];
-            snprintf(buffer, sizeof(buffer), "%ld:%d:%d:%d:%d:20:20:20:20\n",
-                     time(nullptr), link_quality, link_quality, recovered_packets, lost_packets);
+            char buffer[128];
+            snprintf(buffer, sizeof(buffer), "%ld:%d:%d:0:0:20:20:20:20\n",
+                     time(nullptr) , link_quality, link_quality);
 
             ssize_t sentBytes = sendto(
                 m_sock,
@@ -369,6 +343,8 @@ public:
                 reinterpret_cast<sockaddr*>(&m_destAddr),
                 sizeof(m_destAddr)
             );
+
+            cout << "[RcCommandAlinkForwarder] Sent " << sentBytes << " bytes to alink_drone, message: " << buffer << "\n";
 
             if (sentBytes < 0) {
                 perror("Failed to send UDP data");
@@ -417,10 +393,11 @@ public:
             for (auto& exec : it->second) {
                 exec->execute(msg, m_dataModel);
             }
-        } else if (m_dataModel.verbose) {
-            cout << "[MspCommandDispatcher] Unhandled command: " 
-                 << static_cast<int>(msg.cmd) << "\n";
         }
+        //  else if (m_dataModel.verbose) {
+        //     cout << "[MspCommandDispatcher] Unhandled command: " 
+        //          << static_cast<int>(msg.cmd) << "\n";
+        // }
     }
 
 private:
@@ -444,13 +421,11 @@ public:
     }
 
     void onMspMessage(const MspMessage& msg) override {
-        if (m_dataModel.verbose) {
-            cout << "[MspMessageHandler] Received MSP msg: cmd="
-                 << static_cast<int>(msg.cmd)
-                 << ", size=" << static_cast<int>(msg.size) << "\n";
-        }
-        // Copy entire message to frame buffer if we want to forward it
-        m_dataModel.copyToFrameBuffer(&msg, sizeof(msg));
+        // if (m_dataModel.verbose) {
+        //     cout << "[MspMessageHandler] Received MSP msg: cmd="
+        //          << static_cast<int>(msg.cmd)
+        //          << ", size=" << static_cast<int>(msg.size) << "\n";
+        // }
 
         // Dispatch to all interested executors
         m_dispatcher.dispatchMessage(msg);
